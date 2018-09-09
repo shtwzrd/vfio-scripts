@@ -1,0 +1,86 @@
+#!/bin/bash
+
+function usage {
+    echo -e "Help is not coming";
+}
+
+function affset {
+    # taskset parent pid so any children spawned get given worker affinity
+    pcmd="taskset -cap $3 $1"
+    printf "%s\n" "$pcmd"
+    if ! [ "$6" = "y" ]; then
+        eval "$pcmd"
+    fi
+       
+    i=1
+    j=1
+    echo $6
+    cpuGlob="CPU"
+    ioGlob="IO"
+    qemuGlob="qemu"
+    ps -T -p $1 | tail -n +2 | while read pid thread _ _ cmd; do
+        tcmd=""
+        if [[ "$cmd" =~ $qemuGlob ]]; then
+	    echo "kay qemu"
+	    tcmd+="taskset -cp $5 $thread"
+	    echo "u get $5"
+        elif [[ "$cmd" =~ $cpuGlob ]]; then
+	    cpu=$(cut -d ',' -f $i <<< $2)
+	    tcmd+="taskset -cp $cpu $thread"
+	    i=$((i+1))
+	elif [[ "$cmd" =~ $ioGlob ]]; then
+	    io=$(cut -d ',' -f $j <<< $4)
+	    tcmd+="taskset -cp $io $thread"
+	    j=$((j+1))
+	else
+	   tcmd+="taskset -cp $3 $thread"
+	fi
+	printf "%s\n" "$tcmd"
+	if ! [ "$6" = "y" ]; then
+            eval "$tcmd"
+	fi
+    done
+}
+
+while getopts p:c:w:i:q:nh FLAG; do
+    case $FLAG in
+        p) PID=$OPTARG ;;
+        c) CPUS=$OPTARG ;;
+        w) WORK=$OPTARG ;;
+        i) IO=$OPTARG ;;
+        q) QH=$OPTARG ;;
+        n) DRY="y" ;;
+        h) usage; exit ;;
+       \?) echo "Unknown option: -$OPTARG" >&2; exit 1 ;;
+        :) echo "Missing option arg for -$OPTARG" >&2; exit 1 ;;
+        *) echo "Unsupported arg -$OPTARG" >&2; exit 1 ;;
+    esac
+done
+
+case $PID in
+    ''|*[!0-9]*) echo -e "Invalid input $PID: arg -p must be a pid"; exit 1 ;;
+esac
+
+case $CPUS in
+    '') echo -e "argument -c is required"; exit 1 ;;
+esac
+    
+case $WORK in
+    '') echo -e "argument -w is required"; exit 1 ;;
+esac
+
+case $IO in
+    '') echo -e "argument -i is required"; exit 1 ;;
+esac
+
+case $QH in
+    '') echo -e "argument -q is required"; exit 1 ;;
+esac
+
+echo $QH
+
+if [ "$DRY" = "y"  ]; then
+    echo "Performing dry run..."
+fi
+
+affset "$PID" "$CPUS" "$WORK" "$IO" "$QH" "$DRY"

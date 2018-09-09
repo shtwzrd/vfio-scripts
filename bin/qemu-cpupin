@@ -1,0 +1,13 @@
+#!/usr/bin/ksh
+
+physicalcpu=$3;
+ps -Leo tid,%cpu,args | grep qemu | grep $1 | grep -v grep | sort -k 2 -rn | sed "s/^ *\([0-9]*\).*/\1/" |
+head -$2 | while read QEMU_pid; do
+   if [[ $4 = "-n" ]]; then
+      echo taskset -pc $physicalcpu $QEMU_pid; chrt -f --pid 1 $QEMU_pid
+   else
+      taskset -pc $physicalcpu $QEMU_pid; chrt -f --pid 1 $QEMU_pid
+   fi;
+   let physicalcpu+=1;
+done;
+
